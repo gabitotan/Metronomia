@@ -1,12 +1,11 @@
 package com.example.metronomia;
 
-import android.annotation.SuppressLint;
-import android.content.Intent;
-import android.media.Image;
 import android.media.MediaPlayer;
 import android.os.CountDownTimer;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
@@ -16,68 +15,85 @@ import android.widget.ImageButton;
 import android.widget.Spinner;
 import android.widget.Switch;
 import android.widget.TextView;
+import android.widget.Toast;
+
+import com.google.firebase.FirebaseApp;
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.Query;
+import com.google.firebase.database.ValueEventListener;
 
 import java.util.ArrayList;
-import java.util.Locale;
 import java.util.Timer;
 import java.util.TimerTask;
 
-public class MainActivity extends AppCompatActivity {
-
-    private static final long START_TIMI_MILIS = 600000;
-
+public class Livee extends AppCompatActivity implements ExampleDialog.ExampleDialogListener {
     int MS_MIN = 60000;
     int bpm = 100;
     int division = 1;
     int accent = 3;
     int mod_accent = 4;
-    boolean bool_countdown = false;
+    int listSelectedPosition;
+    String masura;
+    String numeCantec;
     boolean bool_accent = false;
-    boolean countdownRunning;
-    long timeLeftMilis = START_TIMI_MILIS;
-    CountDownTimer countdownTimer;
     Timer mainTimer;
     MyTimerTask timerTask;
     TextView bpmTextView;
-    TextView countdownTextView;
     ImageButton playButton;
-
+    ImageButton saveButton;
+    ImageButton deleteButton;
+    RecyclerView myRecylerView;
+    RecyclerView.Adapter adapter;
+    ArrayList<Song> songList;
+    Switch accentSwitch;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
+        setContentView(R.layout.activity_livee);
 
-        //declarare
-        playButton = (ImageButton) findViewById(R.id.playButton);
-        ImageButton upButton = (ImageButton) findViewById(R.id.upImageButton);
-        ImageButton downButton = (ImageButton) findViewById(R.id.downImageButton);
+        Button butonPractice2 = (Button) findViewById(R.id.buttonPracticeActivity2);
+        playButton = (ImageButton) findViewById(R.id.playButton3);
+        saveButton = (ImageButton) findViewById(R.id.imageButtonSave);
+        deleteButton = (ImageButton) findViewById(R.id.imageButtonDelete);
+        ImageButton upButton = (ImageButton) findViewById(R.id.upImageButton3);
+        ImageButton downButton = (ImageButton) findViewById(R.id.downImageButton3);
 
-        bpmTextView = (TextView) findViewById(R.id.bpmTextView);
+
+        bpmTextView = (TextView) findViewById(R.id.bpmTextView3);
         bpmTextView.setText("100");
 
-        countdownTextView = (TextView) findViewById(R.id.countdownTextView);
-        final Switch countdownSwitch = (Switch) findViewById(R.id.countdownSwitch);
-        final Switch accentSwitch = (Switch) findViewById(R.id.accentSwitch);
+        accentSwitch = (Switch) findViewById(R.id.accentSwitch2);
 
-        final Button butonPlus = (Button) findViewById(R.id.buttonPlusCount);
-        final Button butonMinus = (Button)findViewById(R.id.buttonMinusCount);
-        final Button butonReset = (Button) findViewById(R.id.buttonReset);
-        final Button butonLive = (Button) findViewById(R.id.buttonLiveActivity);
-
-        Spinner subdivisionSpinner = (Spinner) findViewById(R.id.subdivisionSpinner);
-        Spinner masuraSpinner = (Spinner) findViewById(R.id.timeMeasureSpinner);
+        Spinner subdivisionSpinner = (Spinner) findViewById(R.id.subdivisionSpinner2);
+        Spinner masuraSpinner = (Spinner) findViewById(R.id.timeMeasureSpinner2);
 
         ArrayList<String> listaSubdivisions = new ArrayList<>(); listaSubdivisions.add("1");listaSubdivisions.add("2"); listaSubdivisions.add("3"); listaSubdivisions.add("4");
         ArrayList<String> listaMasura = new ArrayList<>(); listaMasura.add("4/4"); listaMasura.add("2/4"); listaMasura.add("3/4"); listaMasura.add("5/4");
 
-        ArrayAdapter<String> adapter1 = new ArrayAdapter<String>(this, R.layout.spinner_items, listaSubdivisions);
+        final ArrayAdapter<String> adapter1 = new ArrayAdapter<String>(this, R.layout.spinner_items, listaSubdivisions);
         adapter1.setDropDownViewResource(R.layout.spinner_dropdown);
         subdivisionSpinner.setAdapter(adapter1);
 
         ArrayAdapter<String> adapter2 = new ArrayAdapter<String>(this,  R.layout.spinner_items, listaMasura);
         adapter2.setDropDownViewResource(R.layout.spinner_dropdown);
         masuraSpinner.setAdapter(adapter2);
+
+        //lista
+        myRecylerView = (RecyclerView) findViewById(R.id.myRecyclerView);
+        myRecylerView.setHasFixedSize(true);
+        myRecylerView.setLayoutManager(new LinearLayoutManager(this));
+
+        songList = new ArrayList<>();
+
+        adapter = new MyAdapter(songList, this);
+        myRecylerView.setAdapter(adapter);
+
+        //initializare lista din baza de date
+        initListaCantece();
 
         //spinner item listeners
         subdivisionSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
@@ -98,6 +114,7 @@ public class MainActivity extends AppCompatActivity {
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 String text = parent.getItemAtPosition(position).toString();
                 String cif = String.valueOf(text.charAt(0));
+                masura = cif;
                 mod_accent = Integer.parseInt(cif);
             }
 
@@ -159,73 +176,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        butonPlus.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                timeLeftMilis += 60000;
-                updateCountdown();
-                int min = (int) (timeLeftMilis / 1000) / 60;
-                if(min == 99) {
-                    resetTimer();
-                }
-
-                if(countdownRunning) {
-                    pauseTimer();
-                    startTimer();
-                }
-            }
-        });
-
-        butonMinus.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                timeLeftMilis -= 60000;
-                updateCountdown();
-                int sec = (int) (timeLeftMilis / 1000) % 60;
-                int min = (int) (timeLeftMilis / 1000) / 60;
-
-                if(min < 0){
-                    resetTimer();
-                }
-                if(countdownRunning) {
-                    pauseTimer();
-                    startTimer();
-                }
-            }
-        });
-
-        butonReset.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if(countdownRunning) {
-                    pauseTimer();
-                    resetTimer();
-                    startTimer();
-                }
-                resetTimer();
-            }
-        });
-
-        countdownSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                if(countdownSwitch.isChecked()){
-                    updateCountdown();
-                    bool_countdown = true;
-                    countdownTextView.setVisibility(View.VISIBLE);
-                    butonPlus.setVisibility(View.VISIBLE);
-                    butonMinus.setVisibility(View.VISIBLE);
-                    butonReset.setVisibility(View.VISIBLE);
-                }
-                else{
-                    bool_countdown = false;
-                    countdownTextView.setVisibility(View.INVISIBLE);
-                    butonPlus.setVisibility(View.INVISIBLE);
-                    butonMinus.setVisibility(View.INVISIBLE);
-                    butonReset.setVisibility(View.INVISIBLE);
-                }
-            }
-        });
 
         accentSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
@@ -243,12 +193,11 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 if(mainTimer != null){
-                    stopClick();
+                    mainTimer.cancel();
+                    mainTimer = null;
+                    playButton.setImageResource(android.R.drawable.ic_media_play);
                 }
                 else{
-                    if(bool_countdown){
-                        startTimer();
-                    }
 
                     accent = mod_accent*division - 1;
                     //TIMER PRINCIPAL
@@ -261,16 +210,42 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        butonLive.setOnClickListener(new View.OnClickListener() {
+        saveButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if(mainTimer != null){
-                    stopClick();
-                }
-                Intent i = new Intent(getApplicationContext(), Livee.class);
-                startActivity(i);
+                ExampleDialog exampleDialog = new ExampleDialog();
+                exampleDialog.show(getSupportFragmentManager(), "example dialog");
             }
         });
+
+        deleteButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                String ID = songList.get(listSelectedPosition).getId();
+                songList.remove(listSelectedPosition);
+                myRecylerView.removeViewAt(listSelectedPosition);
+                adapter.notifyItemRemoved(listSelectedPosition);
+                adapter.notifyItemRangeChanged(listSelectedPosition, songList.size());
+
+                FirebaseDatabase database = FirebaseDatabase.getInstance();
+                DatabaseReference myRef = database.getReference("Songs").child(ID);
+
+                myRef.removeValue();
+            }
+        });
+
+        butonPractice2.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if(mainTimer!= null){
+                    mainTimer.cancel();
+                }
+                finish();
+            }
+        });
+
+        mLiveObj = this;
+
 
     }
 
@@ -312,6 +287,34 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
+    public static Livee mLiveObj;
+    public static Livee getInstance(){
+        return  mLiveObj;
+    }
+
+    public void setSongView(String b, int i, boolean a){
+        bpm = Integer.parseInt(b);
+        if(bpm >= 300)
+            bpm = 300;
+        bpmTextView.setText(Integer.toString(bpm));
+
+        listSelectedPosition = i;
+
+        if(a){
+            accentSwitch.setChecked(true);
+        }
+        else{
+            accentSwitch.setChecked(false);
+        }
+
+        if(mainTimer!=null){
+            mainTimer.cancel();
+            mainTimer = new Timer();
+            timerTask = new MyTimerTask();
+            mainTimer.scheduleAtFixedRate(timerTask, 0, MS_MIN / (bpm*division));
+        }
+    }
+
     class MyTimerTask extends TimerTask {
         @Override
         public void run() {
@@ -323,53 +326,42 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    Song song;
 
-    private void startTimer(){
-        countdownTimer = new CountDownTimer(timeLeftMilis, 1000) {
+
+    @Override
+    public void applyText(String songName) {
+        numeCantec = songName;
+
+        FirebaseDatabase database = FirebaseDatabase.getInstance();
+        DatabaseReference myRef = database.getReference().child("Songs");
+        String id = myRef.push().getKey();
+
+        song = new Song(numeCantec, Integer.toString(bpm), bool_accent, id);
+        songList.add(song);
+        adapter.notifyDataSetChanged();
+
+        myRef.child(id).setValue(song);
+
+    }
+
+    public void initListaCantece(){
+        DatabaseReference mRootRef = FirebaseDatabase.getInstance().getReference();
+        final Query myQuery = mRootRef.child("Songs").orderByChild("bpm");
+        myQuery.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
-            public void onTick(long millisUntilFinished) {
-                timeLeftMilis = millisUntilFinished;
-                updateCountdown();
-
+            public void onDataChange(DataSnapshot dataSnapshot) {
+                if (dataSnapshot.exists()) {
+                    for(DataSnapshot songSnap: dataSnapshot.getChildren()) {
+                        Song s = songSnap.getValue(Song.class);
+                        songList.add(s);
+                        adapter.notifyDataSetChanged();
+                    }
+                }
             }
-
             @Override
-            public void onFinish() {
-                countdownRunning = false;
-                stopClick();
-                resetTimer();
-
-            }
-        }.start();
-
-        countdownRunning = true;
+            public void onCancelled(DatabaseError databaseError) { }
+        });
     }
 
-    private void pauseTimer(){
-        countdownTimer.cancel();
-        countdownRunning = false;
-    }
-
-    private void resetTimer(){
-        timeLeftMilis = START_TIMI_MILIS;
-        updateCountdown();
-    }
-
-    private void updateCountdown(){
-        int min = (int) (timeLeftMilis / 1000) / 60;
-        int sec = (int) (timeLeftMilis / 1000) % 60;
-        String timeForm = String.format(Locale.getDefault(),"%02d:%02d", min, sec);
-        countdownTextView.setText(timeForm);
-    }
-
-    private void stopClick(){
-        if(bool_countdown){
-            pauseTimer();
-        }
-        mainTimer.cancel();
-        mainTimer = null;
-        playButton.setImageResource(android.R.drawable.ic_media_play);
-    }
-
-
-} // END of MAIN ACTVT
+}
